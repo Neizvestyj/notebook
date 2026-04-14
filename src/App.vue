@@ -10,8 +10,8 @@ const flagAccardion = ref(false);
 const users = ref([]);
 const user = ref({});
 
-const email = ref('');
-const password = ref('');
+const email = ref('q@mail.ru');
+const password = ref('1');
 const isLoginMode = ref(true);
 const userId = ref(null);
 const exercises = ref([]);
@@ -52,6 +52,8 @@ const itemss = ref([
   },
 ]);
 const currentEmail = ref('');
+// Добавьте эту строку вместе с другими объявлениями ref
+const currentUserId = ref(null);
 onMounted(() => {
   // loadingExercise();
   fetchUsers();
@@ -59,6 +61,7 @@ onMounted(() => {
 const toggleMode = () => {
   isLoginMode.value = !isLoginMode.value; // Переключаем режим
 };
+/*
 const fetchUserExercises = async () => {
   if (!userId.value) {
     console.error('userId не установлен. Запрос не будет выполнен.');
@@ -70,6 +73,57 @@ const fetchUserExercises = async () => {
     console.log('Полученные упражнения:', response.data); // Для отладки
   } catch (error) {
     console.error('Ошибка при получении упражнений:', error);
+  }
+};*/
+
+// Функция для получения заголовков Basic Auth
+const getBasicAuthConfig = () => {
+  // ВАЖНО: В реальном приложении хранить пароль в localStorage небезопасно.
+  // Для локальной разработки это допустимо.
+  const username = 'q@mail.ru'; // Ваш email
+  const password = '1'; // Ваш пароль
+
+  // Кодируем строку "email:password" в Base64
+  const base64Credentials = btoa(`${username}:${password}`);
+
+  return {
+    headers: {
+      'Authorization': `Basic ${base64Credentials}`
+    }
+  };
+};
+// Функция для получения заголовков авторизации
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  // Если токена нет, можно вернуть пустые заголовки или обработать это как ошибку
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+// Предположим, у вас есть переменные userEmail и userPassword или объект loggedInUser
+
+const fetchUserExercises = async (userId) => {
+  // Если userId не передан или пуст, просто очищаем список и выходим.
+  // Это может произойти при выходе из аккаунта.
+  if (!userId) {
+    exercises.value = []; // Очищаем список упражнений
+    return;
+  }
+
+  try {
+    const response = await axios.get(`http://localhost:3000/api/exercises?userId=${userId}`, getBasicAuthConfig());
+    exercises.value = response.data;
+    console.log('Упражнения успешно загружены:', exercises.value);
+  } catch (error) {
+    console.error('Ошибка при получении упражнений:', error);
+    // Если ошибка 401 (неавторизован), возможно, токен протух.
+    // Очищаем список и, возможно, просим пользователя войти снова.
+    if (error.response && error.response.status === 401) {
+      exercises.value = [];
+      alert('Сессия истекла. Пожалуйста, войдите снова.');
+      // localStorage.removeItem('token'); // Можно удалить токен
+    } else {
+      // При других ошибках просто оставляем список пустым
+      exercises.value = [];
+    }
   }
 };
 
@@ -131,7 +185,7 @@ const loginUser = async () => {
       console.log('Успешный вход:', response.data);
       user.value = response.data; // Получаем пользователя с сервера
       userId.value = user.value._id; // Устанавливаем userId
-      await fetchUserExercises(); // Получаем упражнения для данного пользователя
+      await fetchUserExercises(userId.value); // Получаем упражнения для данного пользователя
       console.log('Упражнения:', userId.value); // Логируем userId
       // Сохраняем токен и обновляем email
       localStorage.setItem('token', response.data.token); // Сохраняем токен
@@ -151,7 +205,7 @@ const loginUser = async () => {
 };
 
 
-const fetchUsers = async () => {
+/*const fetchUsers = async () => {
   try {
     const response = await axios.get('http://localhost:3000/api/users'); // Запрос на получение всех пользователей
     users.value = response.data; // Сохраняем всех пользователей в массив
@@ -159,9 +213,26 @@ const fetchUsers = async () => {
   } catch (error) {
     console.error('Ошибка при получении пользователей:', error);
   }
+};*/
+
+
+// Замените вашу функцию fetchUsers на эту:
+const fetchUsers = async () => {
+  try {
+    // Используем параметр auth. 
+    // Введите свои реальные данные для входа на сервер.
+    const response = await axios.get('http://localhost:3000/api/users', {
+      auth: {
+        username: 'q@mail.ru', // Ваш email пользователя, который зарегистрирован
+        password: '1' // Его пароль
+      }
+    });
+    users.value = response.data; // Сохраняем всех пользователей в массив
+    console.log('Список пользователей получен:', users.value);
+  } catch (error) {
+    console.error('Ошибка при получении пользователей:', error);
+  }
 };
-
-
 const filteredItems = computed(() => {
   console.log('Фильтруемые упражнения:', exercises.value);
   console.log('Текущий userId:', userId.value);
@@ -182,168 +253,229 @@ const filteredItems = computed(() => {
 const toggleAccardion = (_id) => {
   openAccardion.value = openAccardion.value === _id ? null : _id;
 };
-
-const fixLog = async (item, exIndex) => {
+/*
+const fixLog = async (item) => { // Убираем exIndex, он не используется
   console.log('Before fixLog:', item);
-  //item.logs.unshift({ weight: item.weight, reps: item.reps })
-  // если нет тренировок, создаём новую
-  if (!Array.isArray(item.exercise) || item.exercise.length === 0) {
-    item.exercise = [{ date: new Date().toISOString().slice(0, 10), logs: [] }];
+
+  // 1. Создаем глубокую копию объекта item, чтобы не мутировать оригинал
+  const updatedItem = JSON.parse(JSON.stringify(item));
+
+  // 2. Работаем с копией
+  if (!Array.isArray(updatedItem.sessions)) {
+    updatedItem.sessions = [];
   }
-  const session = item.exercise[item.exercise.length - 1];
-  const w = item.weight != null ? item.weight : 0;
-  const r = item.reps != null ? item.reps : 0;
-  console.log('Current session:', session);
+
+  if (updatedItem.sessions.length === 0) {
+    // Создаем новую сессию в копии
+    updatedItem.sessions.push({ date: new Date().toISOString().slice(0, 10), logs: [] });
+  }
+
+  const session = updatedItem.sessions[updatedItem.sessions.length - 1];
+  const w = updatedItem.weight != null ? updatedItem.weight : 0;
+  const r = updatedItem.reps != null ? updatedItem.reps : 0;
+
+  // Добавляем лог в копию
   session.logs.push({ weight: w, reps: r });
 
-  const exerciseData = {
-    ...item,
-    _id: item._id,
-    name: item.name,
-    exercise: item.exercise,
-    // Убедитесь, что вы добавляете <i>id для обновления
-  };
-  console.log('Переданные данные для обновления:', exerciseData);
-  if (!exerciseData._id) {
-    throw new Error("ID упражнения не задан"); // Выбросьте ошибку раньше, чтобы избежать дальнейших проблем
+  console.log('Данные для отправки (копия):', updatedItem);
+
+  if (!updatedItem.name) {
+    throw new Error("Название упражнения не задано");
   }
-  await updateExercise(exerciseData);
-  //saveExercise(item)
+
+  // 3. Отправляем на сервер чистую копию
+  //await updateExercise(updatedItem._id, updatedItem);
 };
-const updateExercise = async (exerciseData) => {
-  console.log('Переданные данные для обновления:', exerciseData);
-  if (!exerciseData._id) {
-    throw new Error("ID упражнения не задан");
+// Удалите или закомментируйте старую функцию updateExercise
+// const updateExercise = async (...args) => { ... }
+*/
+const fixLog = async (item) => {
+  // 1. Находим индекс текущего упражнения в основном массиве exercises.value
+  const itemIndex = exercises.value.findIndex(ex => ex._id === item._id);
+
+  if (itemIndex === -1) {
+    console.error("Упражнение не найдено в локальном массиве.");
+    return;
   }
+
+  // 2. Получаем значения веса и повторений из формы
+  const w = item.weight != null ? item.weight : 0;
+  const r = item.reps != null ? item.reps : 0;
+
+  // Если веса и повторы не указаны, нет смысла отправлять запрос
+  if (w === 0 && r === 0) {
+    console.warn("Вес и повторы равны нулю. Лог не добавлен.");
+    return;
+  }
+
+  // 3. Создаем новый объект лога, который нужно отправить на сервер
+  const newLog = { weight: w, reps: r };
+
   try {
-    const response = await axios.put(`http://localhost:3000/api/exercises/${exerciseData._id}`, exerciseData);
-    console.log('Упражнение успешно обновленоoo:', response.data);
+    // --- ОТПРАВКА ЗАПРОСА НА СЕРВЕР ---
+    // Мы отправляем только новый лог, а не весь объект упражнения.
+    // Сервер сам добавит его в последнюю сессию.
+    await axios.post(
+      `http://localhost:3000/api/exercises/${item._id}/sessions/log`, // <-- НОВЫЙ ЭНДПОИНТ (см. ниже)
+      newLog,
+      getBasicAuthConfig()
+    );
+
+    // --- ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (ТОЛЬКО ПОСЛЕ УСПЕХА!) ---
+    // Находим последнюю сессию в локальном массиве и добавляем лог туда.
+    // Это Vue-совместимый способ обновления.
+    const sessions = exercises.value[itemIndex].sessions;
+    const lastSessionIndex = sessions.length - 1;
+
+    if (lastSessionIndex >= 0) {
+      // Используем .push() для массива - это реактивно
+      sessions[lastSessionIndex].logs.push(newLog);
+    } else {
+      console.error("Нет сессий для добавления лога.");
+    }
+
+    console.log('Лог успешно добавлен в интерфейс и на сервер.');
+
+  } catch (error) {
+    console.error('Ошибка при добавлении лога:', error.response ? error.response.data : error);
+    alert("Не удалось сохранить результат. Проверьте консоль на наличие ошибок.");
+  }
+};
+const updateExercise = async (exerciseId, exerciseData) => {
+  console.log('Переданные данные для обновления:', exerciseData);
+
+  try {
+    // Исправлено: добавлены кавычки для URL
+    const response = await axios.put(`http://localhost:3000/api/exercises/${exerciseId}`, exerciseData, getBasicAuthConfig());
+    console.log('Упражнение успешно обновлено:', response.data);
   } catch (error) {
     console.error('Ошибка при обновлении на сервере', error.message, error.stack);
-    console.error('Ошибка при обновлении на сервере', error.response.data);
+    console.error('Ошибка при обновлении на сервере', error.response ? error.response.data : error);
   }
 };
 
-/*const addExercise = async (item) => {
-  // Проверяем, существует ли массив exercise
-  if (!Array.isArray(item.exercises)) {
-    item.exercises = [];
-  }
-  // Добавляем новое упражнение с текущей датой
-  const newSession = {
-    date: new Date().toISOString(),
-    logs: []
-  };
-  console.log(JSON.stringify(newSession, null, 2))
-
-  item.exercises.push(newSession); // Добавляем новое упражнение в массив
-
-  // Открываем аккордеон, если нужно
-  openAccardion.value = item._id;
-  console.log(JSON.stringify(item, null, 2))
-  try {
-    // Сохраняем новое упражнение на сервере
-    // const response = await axios.post(`/api/exercises/${item._id}/sessions`, newSession);
-    const response = await axios.post(`http://localhost:3000/api/exercises/${item._id}`, {
-      exercises: [newSession]
-    });
-
-    console.log('Занятие успешно добавлено:', response.data);
-    await fetchUserExercises(); // Обновите список упражнений, если это необходимо
-    // const response = await saveExercise(item);
-    console.log('Упражнение успешно добавлено:', response.data);
-  } catch (error) {
-    console.error('Ошибка при добавлении упражнения:', error.message);
-  }
-
-  // Закрываем детали и устанавливаем флаг
-  openDetails.value = 0;
-  flagBtn.value = true;
-
-};
-*/
 const addExercise = async (item) => {
-  // Проверяем, существует ли массив sessions
-  if (!Array.isArray(item.exercises)) {
-    item.exercises = [];
-  }
+  // Находим индекс текущего упражнения в основном массиве exercises.value
+  const itemIndex = exercises.value.findIndex(ex => ex._id === item._id);
 
-  // Создаем новую сессию упражнения
+  if (itemIndex === -1) return; // Защита, если элемент не найден
+
+  // Создаем копию упражнения из основного массива
+  const updatedItem = JSON.parse(JSON.stringify(exercises.value[itemIndex]));
+
+  // Создаем новую сессию
   const newSession = {
     date: new Date().toISOString(),
     logs: []
   };
 
-  // Добавляем новую сессию к нужному упражнению
-  if (Array.isArray(item.exercises)) {
-    const targetExercise = item.exercises.find(ex => ex.name === nameExer.value); // Найдите нужное упражнение
-    if (targetExercise) {
-      if (!Array.isArray(targetExercise.sessions)) {
-        targetExercise.sessions = [];
-      }
-      targetExercise.sessions.push(newSession); // Добавляем новую сессию
-    }
+  // Добавляем сессию в копию упражнения
+  if (!Array.isArray(updatedItem.sessions)) {
+    updatedItem.sessions = [];
   }
-  // Логируем новую сессию
-  console.log(JSON.stringify(newSession, null, 2));
-  // Открываем аккордеон, если нужно
-  openAccardion.value = item._id;
+  updatedItem.sessions.push(newSession);
+
   try {
-    // Сохраняем новое упражнение на сервере
-    const response = await axios.post(`http://localhost:3000/api/exercises/${item._id}/sessions`, newSession);
+    // Отправляем на сервер копию с новой сессией
+    const response = await axios.post(
+      `http://localhost:3000/api/exercises/${updatedItem._id}/sessions`,
+      newSession,
+      getBasicAuthConfig()
+    );
 
     console.log('Занятие успешно добавлено:', response.data);
-    await fetchUserExercises(); // Обновите список упражнений, если это необходимо
+
+    // Обновляем основной массив exercises.value с помощью Vue-совместимого метода,
+    // чтобы интерфейс отреагировал на изменение.
+    exercises.value[itemIndex] = updatedItem;
+
+    // Флаги для UI
+    openAccardion.value = item._id;
+    openDetails.value = exercises.value[itemIndex].sessions.length - 1; // Открываем последнюю сессию
+    flagBtn.value = true;
+
   } catch (error) {
     console.error('Ошибка при добавлении упражнения:', error.message);
+    // Если запрос упал, откатываем изменение в массиве или просто ничего не делаем.
+    // fetchUserExercises(); // Можно перезагрузить данные с сервера для надежности
   }
-  // Закрываем детали и устанавливаем флаг
-  openDetails.value = 0;
-  flagBtn.value = true;
 };
 
-const del = async (userId, exerciseId) => {
-  console.log("Deleting exercise with ID:", exerciseId); // Выводим ID
+const del = async (exerciseId) => {
+  // userId берем из глобального состояния
+  if (!userId.value) return;
+
+  console.log("Deleting exercise with ID:", exerciseId);
+
   try {
-    await axios.delete(`http://localhost:3000/api/exercises/${userId}/${exerciseId}`);
-    items.value = items.value.filter(item => item._id !== exerciseId); // Обновляем список
-    fetchUserExercises(); // Обновляем список упражнений
+    // Отправляем запрос на удаление на сервер
+    await axios.delete(`http://localhost:3000/api/exercises/${userId.value}/${exerciseId}`, getBasicAuthConfig());
+
+    // ТОЛЬКО ЕСЛИ ЗАПРОС УСПЕШЕН, мы обновляем интерфейс.
+    // Самый надежный способ — просто перезагрузить данные с сервера.
+    // Это гарантирует, что состояние UI и БД синхронизировано.
+    await fetchUserExercises(userId.value);
+
+    // Если вы хотите обновить массив вручную для мгновенного эффекта (оптимистично),
+    // это нужно делать только ПОСЛЕ успешного ответа от сервера и с проверкой на ошибку.
+    // Но перезагрузка через fetch проще и надежнее для начинающих.
+
+    console.log('Упражнение успешно удалено. Список обновлен.');
+
   } catch (e) {
-    alert("Ошибка при удалении данных с сервера");
-    console.error("Ошибка при удалении данных с сервера", e);
+    // Если произошла ошибка, мы НЕ меняем интерфейс.
+    // Пользователь увидит старое состояние и сообщение об ошибке.
+    alert("Ошибка при удалении упражнения. Данные не были изменены.");
+    console.error("Ошибка при удалении упражнения:", e.response ? e.response.data : e);
+
+    // Не нужно здесь вызывать fetchUserExercises(), так как мы хотим оставить UI в прежнем состоянии.
   }
 };
 
 const addNewExercise = async () => {
-  if (nameExer.value !== "") {
-    const newExercise = {
-      userId: userId.value,
+  if (!userId.value) {
+    alert("Пожалуйста, войдите в систему, чтобы добавить упражнение.");
+    return;
+  }
+  if (nameExer.value.trim() !== "") {
+    const payload = {
       email: currentEmail.value,
-      exercises: [{
+      exercise: { // <-- Единственное число!
         name: nameExer.value,
-        date: new Date(),//.toLocaleDateString(),
+        date: new Date().toISOString(),
         logs: []
-      }]
+      }
     };
 
     try {
-      const response = await saveExercise(newExercise); // Сохраняем на сервере
-      console.log('Упражнение успешно добавлено:', response);
-      nameExer.value = ""; // Сбрасываем поле ввода
-      flagAccardion.value = false; // Закрываем аккордеон
-      await fetchUserExercises();
+      const response = await saveExercise(payload);
+      console.log('Упражнение успешно добавлено:', response.data);
+
+      // Обновляем локальный список (если API вернет новое упражнение)
+      if (response.data && response.data.exercise) {
+        exercises.value.push(response.data.exercise);
+      }
+
+      nameExer.value = "";
+      flagAccardion.value = false;
+      await fetchUserExercises(userId.value); // Надежный способ обновить список
+
     } catch (error) {
-      console.error('Ошибка при добавлении нового упражнения:', error);
+      console.error('Ошибка при добавлении нового упражнения:', error.response ? error.response.data : error);
     }
   }
 };
 console.log('Фильтрованные элементы:', filteredItems.value);
+
+
 const saveExercise = async (exerciseData) => {
   try {
-    const response = await axios.post('http://localhost:3000/api/exercises', exerciseData);
+    const response = await axios.post('http://localhost:3000/api/exercises', exerciseData, getBasicAuthConfig());
     console.log('Упражнение успешно сохранено:', response.data);
+    return response.data;
   } catch (error) {
     console.error('Ошибка при сохранении на сервере', error.response.data);
+    throw error;
   }
 };
 
@@ -411,7 +543,7 @@ const saveExercise = async (exerciseData) => {
             <div @click="toggleAccardion(item._id)" class="head">
               <span>{{ item.name }}</span>
               <span class="icon drag-handle">☰</span>
-              <button @click.stop="del(userId, item._id)">del</button>
+              <button @click.stop="del(item._id)">del</button>
             </div>
 
             <div v-if="openAccardion === item._id" class="body">

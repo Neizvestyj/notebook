@@ -2,10 +2,48 @@
 import mongoose from 'mongoose';
 import cors from 'cors';
 import express from 'express';
-import bcrypt from 'bcrypt';
+//import bcrypt from 'bcrypt';
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+
+
+import auth from 'basic-auth';
+import bcrypt from 'bcrypt'; // У вас уже подключен
+
+// --- MIDDLEWARE ДЛЯ АУТЕНТИФИКАЦИИ ---
+const authMiddleware = async (req, res, next) => {
+        // Пропускаем маршруты регистрации и логина
+        if (req.path === '/api/users/register' || req.path === '/api/users/login') {
+                return next();
+        }
+
+        const credentials = auth(req);
+
+        if (!credentials || !credentials.name || !credentials.pass) {
+                res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
+                return res.status(401).send('Требуется авторизация');
+        }
+
+        try {
+                const user = await UserExercise.findOne({ email: credentials.name });
+
+                if (!user || !(await user.isValidPassword(credentials.pass))) {
+                        res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
+                        return res.status(401).send('Неверный email или пароль');
+                }
+
+                // Если всё ок, записываем пользователя в запрос
+                req.user = user;
+                next();
+        } catch (error) {
+                console.error('Ошибка аутентификации:', error);
+                res.status(500).send('Ошибка сервера');
+        }
+};
+
+app.use(authMiddleware);
 
 //mongoose.connect('mongodb://localhost:27017/exercise');
 mongoose.connect('mongodb://localhost:27017/exercise')
@@ -17,8 +55,9 @@ const userExerciseSchema = new mongoose.Schema({
         password: { type: String, required: true }, // Пароль
         exercises: [
                 {
+                        _id: { type: mongoose.Schema.Types.ObjectId, auto: true }, // Автоматически сгенерированный идентификатор
                         name: { type: String, required: true }, // Название упражнения
-                        sessions: [ // Добавляем поле для занятий
+                        sessions: [
                                 {
                                         date: { type: Date, required: true }, // Дата выполнения
                                         logs: [
@@ -32,6 +71,7 @@ const userExerciseSchema = new mongoose.Schema({
                 }
         ]
 });
+
 
 
 // Хеширование пароля перед сохранением
@@ -120,10 +160,8 @@ app.get('/api/exercises', async (req, res) => {
 });
 
 
-
-
 //Сохранение упражнения по ID
-app.put('/api/exercises/:id', async (req, res) => {
+/*app.put('/api/exercises/:id', async (req, res) => {
         console.log('Полученные данные для обновления:', req.body); // Логируем полученные данные
         try {
 
@@ -141,7 +179,7 @@ app.put('/api/exercises/:id', async (req, res) => {
                 res.status(500).send(e);
         }
 });
-
+*/
 app.delete('/api/exercises/:userId/:exerciseId', async (req, res) => {
         const { userId, exerciseId } = req.params;
         try {
@@ -162,33 +200,36 @@ app.delete('/api/exercises/:userId/:exerciseId', async (req, res) => {
 
 // API для создания нового упражнения
 app.post('/api/exercises', async (req, res) => {
-        console.log("Полученные данные:", req.body); // Логируем входящие данные
+        const { email, exercise } = req.body; // <-- Теперь ищем 'exercise'
 
-        // Предполагается, что вы передаете email пользователя вместе с данными
-        const { email, exercises } = req.body;
+        if (!email || !exercise) {
+                return res.status(400).json({ message: 'Email и данные упражнения обязательны.' });
+        }
+
+        // Проверяем структуру упражнения
+        if (!exercise.name) {
+                return res.status(400).json({ message: 'Название упражнения обязательно.' });
+        }
 
         try {
-                // Находим пользователя по email
                 const user = await UserExercise.findOne({ email });
-
                 if (!user) {
                         return res.status(404).send('Пользователь не найден.');
                 }
-                // Проверка на наличие exercises и его длину
-                if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
-                        return res.status(400).send('Упражнения не указаны или неверный формат.');
-                }
 
-                // Добавляем новое упражнение в массив exercises
+                // Добавляем новое упражнение в массив user.exercises
                 user.exercises.push({
-                        name: exercises[0].name,
-                        date: new Date(exercises[0].date), // Убедитесь, что дата в правильном формате
-                        logs: exercises[0].logs
+                        name: exercise.name,
+                        date: new Date(exercise.date),
+                        sessions: [ // <-- ВАЖНО! В схеме у вас 'sessions', а не 'logs'
+                                {
+                                        date: new Date(exercise.date),
+                                        logs: exercise.logs || [] // Если логи пришли, используем их
+                                }
+                        ]
                 });
-
-                // Сохраняем обновленного пользователя
                 await user.save();
-                res.status(201).send(user); // Возвращаем обновленного пользователя
+                res.status(201).json({ message: 'Успех', exercise: user.exercises[user.exercises.length - 1] }); // Возвращаем созданное упражнение
         } catch (e) {
                 console.error("Ошибка при сохранении упражнения:", e);
                 res.status(400).send(e);
@@ -196,45 +237,95 @@ app.post('/api/exercises', async (req, res) => {
 });
 
 // Обработка добавления новой сессии к упражнению
-app.post('/api/exercises/:id/sessions', async (req, res) => {
-        const exerciseId = req.params.id; // Получаем ID упражнения из параметров
-        const { date, logs } = req.body; // Получаем дату и логи из тела запроса
+// --- НОВЫЙ ЭНДПОИНТ ДЛЯ ДОБАВЛЕНИЯ ЛОГА ---
+app.post('/api/exercises/:id/sessions/log', async (req, res) => {
+        const exerciseId = req.params.id;
+        const { weight, reps } = req.body; // Получаем данные лога
 
         try {
-                // Находим пользователя по email (или другим критериям)
+                // Находим пользователя, у которого есть это упражнение
                 const user = await UserExercise.findOne({ 'exercises._id': exerciseId });
-
                 if (!user) {
-                        return res.status(404).send('Пользователь или упражнение не найдено.');
+                        return res.status(404).send('Упражнение или пользователь не найдены.');
                 }
 
-                // Находим нужное упражнение по ID
                 const exercise = user.exercises.id(exerciseId);
                 if (!exercise) {
                         return res.status(404).send('Упражнение не найдено.');
                 }
 
-                // Создаем новую сессию
-                const newSession = {
-                        date: new Date(date), // Дата выполнения
-                        logs: logs // Логи, которые пришли в запросе
-                };
+                // Находим последнюю сессию упражнения
+                const lastSession = exercise.sessions[exercise.sessions.length - 1];
 
-                // Добавляем новую сессию к упражнению
-                exercise.sessions.push(newSession);
+                if (!lastSession) {
+                        return res.status(400).send('У упражнения нет ни одной сессии для добавления лога.');
+                }
 
-                // Сохраняем обновленного пользователя
+                // Добавляем новый лог в последнюю сессию
+                lastSession.logs.push({ weight, reps });
+
                 await user.save();
-                res.status(201).send(user); // Возвращаем обновленного пользователя с добавленной сессией
+
+                res.status(201).send({ message: 'Лог успешно добавлен' });
+
         } catch (e) {
-                console.error("Ошибка при добавлении сессии:", e);
+                console.error("Ошибка при добавлении лога:", e);
                 res.status(500).send('Произошла ошибка на сервере.');
         }
 });
 
 
+import { ObjectId } from 'mongoose';
 
+// --- ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ДЛЯ ОБНОВЛЕНИЯ УПРАЖНЕНИЯ ---
+app.put('/api/exercises/:exerciseId', async (req, res) => {
+        console.log('PUT запрос на /api/exercises/:exerciseId');
+        console.log('Тело запроса:', req.body); // Логируем данные для отладки
 
+        const { exerciseId } = req.params;
+        const { sessions } = req.body;
+
+        // Проверка валидности ID упражнения
+        if (!mongoose.Types.ObjectId.isValid(exerciseId)) {
+                return res.status(400).json({ message: 'Некорректный формат ID упражнения' });
+        }
+
+        // Проверка, что данные для обновления пришли
+        if (!sessions || !Array.isArray(sessions) || sessions.length === 0) {
+                return res.status(400).json({ message: 'Данные для обновления не предоставлены' });
+        }
+
+        try {
+                // req.user доступен благодаря middleware!
+                const userEmail = req.user.email;
+
+                // Находим пользователя, у которого есть упражнение с нужным ID
+                const user = await UserExercise.findOne({
+                        email: userEmail,
+                        'exercises._id': exerciseId
+                });
+
+                if (!user) {
+                        return res.status(404).json({ message: 'Упражнение не найдено или нет доступа' });
+                }
+
+                // Получаем конкретное упражнение из массива
+                const exercise = user.exercises.id(exerciseId);
+
+                // Заменяем весь массив sessions на новый, пришедший с фронта
+                // Это самый надежный способ обновить вложенный массив
+                exercise.sessions = sessions;
+
+                // Сохраняем обновленного пользователя
+                await user.save();
+
+                res.status(200).json({ message: 'Упражнение успешно обновлено' });
+
+        } catch (error) {
+                console.error('Ошибка при обновлении:', error);
+                res.status(500).json({ message: 'Ошибка сервера', error: error.message });
+        }
+});
 
 app.use((err, req, res, next) => {
         console.error(err.stack);

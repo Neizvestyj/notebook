@@ -16,6 +16,7 @@
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.3",
     "axios": "^1.13.2",
+    "basic-auth": "^2.0.1",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^5.2.1",
