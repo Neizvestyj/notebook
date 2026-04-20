@@ -275,6 +275,31 @@ app.post('/api/exercises/:id/sessions/log', async (req, res) => {
 });
 
 
+// Добавление новой сессии к упражнению пользователя
+app.post('/api/exercises/:id/sessions', async (req, res) => {
+        const exerciseId = req.params.id;
+        const newSession = req.body; // { date: ..., logs: [] }
+
+        try {
+                // Находим пользователя, у которого есть это упражнение
+                const user = await UserExercise.findOne({ 'exercises._id': exerciseId });
+                if (!user) return res.status(404).send('Упражнение не найдено.');
+
+                // Находим само упражнение в массиве
+                const exercise = user.exercises.id(exerciseId);
+                if (!exercise) return res.status(404).send('Упражнение не найдено.');
+
+                // Добавляем новую сессию
+                exercise.sessions.push(newSession);
+                await user.save();
+
+                res.status(201).send({ message: 'Сессия успешно добавлена' });
+        } catch (e) {
+                console.error(e);
+                res.status(500).send('Ошибка сервера');
+        }
+});
+
 import { ObjectId } from 'mongoose';
 
 // --- ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ДЛЯ ОБНОВЛЕНИЯ УПРАЖНЕНИЯ ---
