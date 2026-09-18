@@ -114,7 +114,7 @@ li::marker {
 }
 
 summary::marker {
-  dispaly: none;
+  display: none;
 }
 
 summary::-webkit-details-marker {
@@ -210,7 +210,7 @@ summary::-webkit-details-marker {
     font-size: 28px;
     line-height: 45px;
     color: rgba(255, 255, 255, 0.5);
-    //background-color: rgba(255, 255, 255, 0.1);
+    /*background-color: rgba(255, 255, 255, 0.1);*/
     pointer-events: none;
 
   }
@@ -224,11 +224,12 @@ summary::-webkit-details-marker {
 
 .list-wrapper {
   width: 380px;
-  / как у .accordion / max-height: calc(100vh - 80px);
+  /*как у .accordion */
+  max-height: calc(100vh - 80px);
 
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  / плавный скролл на iOS /
+
 }
 
 .list-wrapper::-webkit-scrollbar {
@@ -240,15 +241,15 @@ summary::-webkit-details-marker {
   border-radius: 4px;
 }
 
-//*.list-wrapper {
+/*.list-wrapper {
 max-height: calc(100vh - 520px);
-/ подгоните / overflow-y: auto;
+
 display: flex;
 justify-content: center;
 
 }
 
-* //
+*/
 
 
 /*body {
@@ -290,13 +291,13 @@ justify-content: center;
   font-size: 28px;
   line-height: 45px;
   color: rgba(255, 255, 255, 0.5);
-  //background-color: rgba(255, 255, 255, 0.1);
+  /*background-color: rgba(255, 255, 255, 0.1);*/
   pointer-events: none;
 }
 
 .box:hover::before {
   color: rgba(255, 255, 255, 0.6);
-  //background-color: rgba(255, 255, 255, 0.2);
+  /*background-color: rgba(255, 255, 255, 0.2);*/
 }
 
 .box select option {
@@ -329,7 +330,7 @@ justify-content: center;
   font-size: 28px;
   line-height: 45px;
   color: rgba(255, 255, 255, 0.5);
-  //background-color: rgba(255, 255, 255, 0.1);
+  /*background-color: rgba(255, 255, 255, 0.1);*/
   pointer-events: none;
 
 }
@@ -346,4 +347,132 @@ justify-content: center;
 
 .dateOfexer {
   font-size: 30px;
+}
+
+
+
+/*новые стили для блллока адд*/
+/* ... все твои предыдущие стили выше остаются без изменений ... */
+
+/* Базовые настройки */
+.form-input,
+.btn-add {
+  font-family: inherit;
+  color: #333;
+  /* Темно-серый текст */
+  border-radius: 8px;
+  padding: 0.75em 1em;
+}
+
+/* Поле ввода */
+.form-input {
+  width: 100%;
+  background: #f9f9fa;
+  /* Очень светлый серый */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease-in-out;
+
+  &::placeholder {
+    opacity: 0.6;
+  }
+
+  /* При фокусе появляется тень вместо жирной рамки */
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(49, 130, 231, 0.3);
+    /* Мягкий синий оттенок */
+  }
+}
+
+/* Кнопка */
+.btn-add {
+  display: inline-block;
+  margin-top: 1rem;
+  min-width: 120px;
+  text-align: center;
+  cursor: pointer;
+  white-space: nowrap;
+
+  background: linear-gradient(to bottom right, #64b5f6, #2196f3);
+  /* Градиент от светло-синих оттенков к темно-синему */
+  color: white;
+  border: none;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.1),
+    0 2px 5px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s, box-shadow 0.2s;
+
+  &:hover {
+    filter: brightness(1.05);
+  }
+
+  &:active {
+    transform: scale(0.98);
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  }
+}
+
+
+
+
+
+
+/* Для работы этого стиля родительский элемент должен иметь цвет фона body из твоей темы (#1a1a1a) */
+
+.form-input,
+.btn-add {
+  font-family: inherit;
+  color: white;
+  border-radius: 8px;
+  padding: 0.75em 1em;
+}
+
+/* Поле ввода */
+.form-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  /* Прозрачный фон */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease-in-out;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* При фокусе становится чуть ярче */
+  &:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Кнопка */
+.btn-add {
+  display: inline-block;
+  margin-top: 1rem;
+  min-width: 120px;
+  text-align: center;
+  cursor: pointer;
+  white-space: nowrap;
+
+  background-image: linear-gradient(to top left, #4c349e, #6c5ce7);
+  /* Глубокий фиолетово-синий градиент */
+  color: white;
+  border: none;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.1),
+    0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s, box-shadow 0.2s;
+
+  &:hover {
+    filter: brightness(1.05);
+  }
+
+  &:active {
+    transform: scale(0.98);
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+  }
+}
+
+.reed {
+  color: orange;
 }

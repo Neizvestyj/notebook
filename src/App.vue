@@ -633,7 +633,7 @@ const saveExercise = async (exerciseData) => {
 
       </draggable>
     </div>
-
+    <!--
     <div :class="['accordion', { open: flagAccardion }]">
       <div class="head" @click="flagAccardion = !flagAccardion">
         <span>Открыть панель</span>
@@ -646,6 +646,36 @@ const saveExercise = async (exerciseData) => {
         <button @click="addNewExercise()">Добавить упражнение</button>
       </div>
     </div>
+-->
+
+
+    <div :class="['accordion', { open: flagAccardion }]">
+      <div class="head" @click="flagAccardion = !flagAccardion">
+        <span>Открыть панель</span>
+        <span class="icon">+</span>
+      </div>
+
+      <div v-if="flagAccardion" class="body">
+        <p>Введите названия упражнения</p>
+        <input class="form-input" v-model="nameExer">
+        <button @click="addNewExercise()" class="btn-add">Добавить упражнение</button>
+      </div>
+    </div>
+
+    <div :class="['accordion', { open: flagAccardion }]">
+      <div class="head" @click="flagAccardion = !flagAccardion">
+        <span>Открыть панель</span>
+        <span class="icon">+</span>
+      </div>
+
+      <!-- ОБЯЗАТЕЛЬНО ЗАКРОЙТЕ ЭТОТ ТЕГ -->
+      <div v-if="flagAccardion" class="body">
+        <p>Введите название упражнения:</p>
+        <input type="text" placeholder="Название..." v-model="nameExer" class="form-input">
+        <button @click="addNewExercise()" class="btn-add">Добавить упражнение</button>
+      </div>
+    </div>
+
 
   </div>
 </template>
