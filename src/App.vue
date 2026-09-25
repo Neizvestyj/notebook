@@ -18,6 +18,7 @@ const exercises = ref([]);
 //const userId = ref(null);
 const items = ref([]);
 const status = ref(false);
+const menu = ref(false);
 const itemss = ref([
   {
     id: 1,
@@ -100,33 +101,32 @@ const getAuthHeaders = () => {
 };
 // Предположим, у вас есть переменные userEmail и userPassword или объект loggedInUser
 
+
 const fetchUserExercises = async (userId) => {
-  // Если userId не передан или пуст, просто очищаем список и выходим.
-  // Это может произойти при выходе из аккаунта.
   if (!userId) {
-    exercises.value = []; // Очищаем список упражнений
+    exercises.value = [];
     return;
   }
 
   try {
-    const response = await axios.get(`http://localhost:3000/api/exercises?userId=${userId}`, getBasicAuthConfig());
+    const token = localStorage.getItem('token'); // Берем токен из хранилища
+
+    const config = {};
+    if (token) {
+      config.headers = { Authorization: `Bearer ${token}` };
+    }
+
+    const response = await axios.get(`http://localhost:3000/api/exercises?userId=${userId}`, config);
     exercises.value = response.data;
     console.log('Упражнения успешно загружены:', exercises.value);
   } catch (error) {
     console.error('Ошибка при получении упражнений:', error);
-    // Если ошибка 401 (неавторизован), возможно, токен протух.
-    // Очищаем список и, возможно, просим пользователя войти снова.
     if (error.response && error.response.status === 401) {
-      exercises.value = [];
-      alert('Сессия истекла. Пожалуйста, войдите снова.');
-      // localStorage.removeItem('token'); // Можно удалить токен
-    } else {
-      // При других ошибках просто оставляем список пустым
-      exercises.value = [];
+      alert('Сессия истекла.');
+      localStorage.removeItem('token');
     }
   }
 };
-
 const addUser = async () => {
   console.log('Функция addUser вызвана'); // Это поможет понять, вызывается ли функция
   console.log('Email:', email.value); // Логируем email
@@ -147,6 +147,7 @@ const addUser = async () => {
       console.log('Пользователь успешно зарегистрирован:', response.data);
       user.value = response.data.user; // Получаем пользователя с сервера
       userId.value = user.value._id; // Или user.value.<i>id, в зависимости от ответа сервера
+      status.value = false;
       await fetchUserExercises();
     } else {
       console.error('Ответ от сервера не содержит данных:', response);
@@ -165,45 +166,39 @@ const addUser = async () => {
   fetchUsers();
 };
 
-
-
 const loginUser = async () => {
-  console.log('Функция loginUser вызвана'); // Это поможет понять, вызывается ли функция
-  console.log('Email:', email.value); // Логируем email
-  // Не логируем пароль для безопасности
-
   try {
-    const response = await axios.post('http://localhost:3000/api/users/login', {
-      email: email.value,
-      password: password.value
-    });
+    const response = await axios.post(
+      'http://localhost:3000/api/users/login',
+      { email: email.value, password: password.value },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
 
-    console.log('Ответ сервера:', response.data); // Логируем ответ от сервера
+    // Сохраняем все данные пользователя вместе со статусом
+    user.value = response.data;
+    console.log(response.data)
+    // Явно записываем ID и Email для удобства
+    userId.value = response.data._id;
+    currentEmail.value = response.data.email;
 
-    // Проверяем ответ от сервера
-    if (response && response.data) {
-      console.log('Успешный вход:', response.data);
-      user.value = response.data; // Получаем пользователя с сервера
-      userId.value = user.value._id; // Устанавливаем userId
-      await fetchUserExercises(userId.value); // Получаем упражнения для данного пользователя
-      console.log('Упражнения:', userId.value); // Логируем userId
-      // Сохраняем токен и обновляем email
-      localStorage.setItem('token', response.data.token); // Сохраняем токен
-      currentEmail.value = email.value;
+    localStorage.setItem('token', response.data.token);
 
-      // Очищаем поля ввода
-      email.value = '';
-      password.value = '';
-    } else {
-      console.error('Проблема с данными пользователя:', response.data);
-      alert('Не удалось получить данные пользователя. Пожалуйста, попробуйте снова.');
-    }
+    // Очищаем форму
+    email.value = '';
+    password.value = '';
+
+    // Загружаем упражнения
+    await fetchUserExercises(userId.value);
+
   } catch (error) {
-    alert('Неверный email или пароль. Пожалуйста, попробуйте снова.');
-    console.error('Ошибка входа:', error.response ? error.response.data : error);
+    let msg = 'Ошибка сети';
+    if (error.response) {
+      msg = error.response.data.message || error.response.data;
+    }
+    alert(msg);
+    console.error(error);
   }
 };
-
 
 /*const fetchUsers = async () => {
   try {
@@ -214,6 +209,11 @@ const loginUser = async () => {
     console.error('Ошибка при получении пользователей:', error);
   }
 };*/
+
+const menuUser = () => {
+  fetchUsers();
+  menu.value = !menu.value;
+};
 
 
 // Замените вашу функцию fetchUsers на эту:
@@ -484,18 +484,43 @@ const saveExercise = async (exerciseData) => {
 <template>
   <div v-if="exercises.length === 0">Нет доступных упражнений.</div>
 
-
-  <div>
-    <h1>Управление пользователями</h1>
+  <button @click="menuUser">M</button>
+  <div v-if="menu">
+    <h1>Пользователи</h1>
     <ul>
-      <li v-for="user in users" :key="user.id">{{ user.email }}</li>
+      <li v-for="user in users" :key="user.id">{{ user.email }}/ status:{{ user.status }} {{ user.status ? '🟢 ' : '🔴 '
+      }}</li>
     </ul>
   </div>
-  <div>
-    <button @click="del()">del</button>
-    <span class="status" v-if="status">&#128994;</span>
-    <span class="status" v-else>&#128308;</span>
 
+  <div v-if="user.email"> <span class="status" v-if="user.status">&#129001; Active</span> <span class="status"
+      v-else>&#128308; Inactive</span> </div>
+
+  <div>
+
+    <span class="status" v-if="user.status">&#129001; S</span>
+    <span class="status" v-else>&#128308; N</span>
+
+    {{ user.status ? '🟢 ' : '🔴 ' }}
+    <form @submit.prevent="isLoginMode ? loginUser() : addUser()">
+      <div>
+        <label for="email">Email</label>
+        <input id="email" type="email" v-model="email" />
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" type="password" v-model="password" />
+      </div>
+
+      <!-- Оставляем только одну кнопку отправки -->
+      <button type="submit">
+        {{ isLoginMode ? 'Войти' : 'Зарегистрироваться' }}
+      </button>
+
+      <!-- А дополнительные действия делаем обычными кнопками вне submit -->
+      <button type="button" @click="toggleMode">Смена режима</button>
+    </form>
+    <!--
     <div>
       <h2>{{ isLoginMode ? 'Login' : 'Sign up for an account' }}</h2>
 
@@ -510,28 +535,17 @@ const saveExercise = async (exerciseData) => {
           <label for="password">Password</label>
           <input id="password" type="password" v-model="password" />
         </div>
+        
         <div>
           <button type="submit">{{ isLoginMode ? 'Login' : 'Sign up' }}</button>
-
         </div>
-      </form>
+      
+    </form>
 
-    </div>
+  </div>-->
+    <!--
     <button @click="toggleMode">{{ isLoginMode ? 'Switch to Sign up' : 'Switch to Login' }}</button>
-
-
-    <div>
-      <h2>User: {{ user.email }}</h2>
-    </div>
-
-    <div>
-      <h2>Users</h2>
-      <ul v-for="(u, index) in users" :key="index">
-        <li>
-          <span>{{ u.email }}</span>
-        </li>
-      </ul>
-    </div>
+    -->
 
     <div class="list-wrapper">
       <draggable v-model="items"
@@ -633,6 +647,9 @@ const saveExercise = async (exerciseData) => {
 
       </draggable>
     </div>
+
+
+
     <!--
     <div :class="['accordion', { open: flagAccardion }]">
       <div class="head" @click="flagAccardion = !flagAccardion">

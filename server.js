@@ -43,7 +43,7 @@ const authMiddleware = async (req, res, next) => {
         }
 };
 
-app.use(authMiddleware);
+//app.use(authMiddleware);
 
 //mongoose.connect('mongodb://localhost:27017/exercise');
 mongoose.connect('mongodb://localhost:27017/exercise')
@@ -53,6 +53,7 @@ mongoose.connect('mongodb://localhost:27017/exercise')
 const userExerciseSchema = new mongoose.Schema({
         email: { type: String, required: true, unique: true }, // Email пользователя
         password: { type: String, required: true }, // Пароль
+        status: { type: Boolean, required: true, default: false },
         exercises: [
                 {
                         _id: { type: mongoose.Schema.Types.ObjectId, auto: true }, // Автоматически сгенерированный идентификатор
@@ -76,17 +77,45 @@ const userExerciseSchema = new mongoose.Schema({
 
 // Хеширование пароля перед сохранением
 userExerciseSchema.pre('save', async function () {
-        if (this.isModified('password')) {
-                const hashedPassword = await bcrypt.hash(this.password, 10); // Ждем окончания хэширования
-                this.password = hashedPassword; // Устанавливаем захешированный пароль
+        // Запускаем только если пароль действительно изменился
+        if (!this.isModified('password')) return;
+
+        console.log('[PRE-SAVE] Обнаружено изменение пароля для:', this.email);
+
+        // Защита от пустых строк и слишком коротких паролей
+        if (!this.password || this.password.length < 4) {
+                console.error('[PRE-SAVE] ОШИБКА: Пароль пустой или короче 4 символов!');
+                // Прерываем сохранение, чтобы в базу не попал мусор
+                throw new Error('Пароль должен быть не менее 4 символов');
+        }
+
+        try {
+                const saltRounds = 10;
+                console.log('[PRE-SAVE] Хешируем пароль...');
+                this.password = await bcrypt.hash(this.password, saltRounds);
+                console.log('[PRE-SAVE] Пароль успешно захеширован.');
+        } catch (error) {
+                console.error('[PRE-SAVE] Фатальная ошибка hash:', error.message);
+                throw new Error('Ошибка шифрования');
         }
 });
 
 
-
 // Метод для проверки пароля
-userExerciseSchema.methods.isValidPassword = async function (password) {
-        return await bcrypt.compare(password, this.password);
+// Метод для проверки пароля
+userExerciseSchema.methods.isValidPassword = async function (candidatePassword) {
+        // Защита от вызова метода на несуществующем пользователе
+        if (!this || !this.password) {
+                return false;
+        }
+
+        try {
+                const isMatch = await bcrypt.compare(candidatePassword, this.password);
+                return isMatch;
+        } catch (error) {
+                console.error('Ошибка внутри compare:', error);
+                return false; // Не падаем с ошибкой 500, просто говорим "неверный пароль"
+        }
 };
 
 
@@ -101,23 +130,32 @@ app.post('/api/users/register', async (req, res) => {
         }
 
         try {
-                const existingUser = await UserExercise.findOne({ email });
+                const existingUser = await UserExercise.findOne({ email }); // Точное соответствие полю схемы
                 if (existingUser) {
                         return res.status(400).json({ message: 'Пользователь с таким email уже зарегистрирован.' });
                 }
 
-                const newUser = new UserExercise({ email, password });
-                await newUser.save();
-                res.status(201).json({ message: 'Пользователь успешно зарегистрирован.', user: newUser });
-        } catch (error) {
-                console.error('Ошибка при регистрации пользователя:', error.stack);
-                console.error('Ошибка при регистрации пользователя:', error);
+                const newUser = new UserExercise({
+                        email: email.toLowerCase(), // Приводим к нижнему регистру для надежности
+                        password: password,
+                        status: false
+                });
 
+                await newUser.save();
+
+                // Возвращаем данные БЕЗ пароля
+                res.status(201).json({
+                        message: 'Пользователь успешно зарегистрирован.',
+                        user: { id: newUser._id, email: newUser.email }
+                });
+        } catch (error) {
+                console.error('Ошибка при регистрации пользователя:', error);
                 res.status(500).send('Ошибка сервера');
         }
 });
 
 
+/*
 app.post('/api/users/login', async (req, res) => {
         const { email, password } = req.body;
 
@@ -133,6 +171,73 @@ app.post('/api/users/login', async (req, res) => {
                 res.status(500).send('Ошибка сервера');
         }
 });
+*/
+/*app.post('/api/users/login', async (req, res) => {
+        const { email, password } = req.body;
+
+        try {
+                // Сначала ищем пользователя
+                const user = await UserExercise.findOne({ email }).select('-password');
+
+                // Если пользователь не найден — сразу возвращаем 401
+                if (!user) {
+                        return res.status(401).json({ message: 'Неверный email или пароль' });
+                }
+
+                // Только если пользователь найден, проверяем пароль через наш исправленный метод
+                const isMatch = await user.isValidPassword(password);
+
+                if (!isMatch) {
+                        return res.status(401).json({ message: 'Неверный email или пароль' });
+                }
+
+                // Вход успешен
+                const token = 'temp-token-' + Date.now();
+                res.json({ _id: user._id, email: user.email, status: user.status, token: token });
+
+        } catch (e) {
+                console.error('Ошибка при входе:', e);
+                res.status(500).json({ message: 'Ошибка сервера' });
+        }
+});*/
+app.post('/api/users/login', async (req, res) => {
+        const { email, password } = req.body;
+        const cleanEmail = email.trim();
+        const cleanPass = password.trim();
+
+        try {
+                const user = await UserExercise.findOne({ email: cleanEmail }).select('+password'); // +password заставляет выгрузить скрытое поле
+
+                if (!user) {
+                        return res.status(401).json({ message: 'Неверный email или пароль' });
+                }
+                user.status = true;
+                await user.save();
+                // Логинимся ТОЛЬКО если статус true (если вы используете флаг блокировки)
+                // if (!user.status) return res.status(403).json({ message: 'Аккаунт заблокирован' });
+
+                console.log('[LOGIN DEBUG] Типы данных:', typeof cleanPass, typeof user.password);
+                console.log('[LOGIN DEBUG] Длины:', cleanPass?.length, user.password?.length);
+
+                if (!cleanPass || !user.password) {
+                        return res.status(401).json({ message: 'Пустой пароль' });
+                }
+
+                const isMatch = await bcrypt.compare(cleanPass, user.password);
+
+                if (!isMatch) {
+                        return res.status(401).json({ message: 'Неверный email или пароль' });
+                }
+
+                const token = 'temp-token-' + Date.now();
+                res.json({ _id: user._id, email: user.email, status: user.status, token: token });
+                //res.json({ _id: user._id, email: user.email, status: user.status = true, token: token });
+        } catch (error) {
+                console.error(error);
+                res.status(500).json({ message: 'Ошибка сервера' });
+        }
+});
+
 
 app.get('/api/users', async (req, res) => {
         try {
@@ -160,26 +265,7 @@ app.get('/api/exercises', async (req, res) => {
 });
 
 
-//Сохранение упражнения по ID
-/*app.put('/api/exercises/:id', async (req, res) => {
-        console.log('Полученные данные для обновления:', req.body); // Логируем полученные данные
-        try {
 
-                const updatedExercise = await UserExercise.findByIdAndUpdate(req.params.id, req.body, { new: true });
-                // const updatedExercise = await Exercise.findOneAndUpdate({ id: req.params.id }, // Если id хранится как поле в документе
-                //req.body, { new: true });
-
-                if (!updatedExercise) {
-                        return res.status(404).send('Упражнение не найдено');
-                }
-
-                res.json(updatedExercise)
-        } catch (e) {
-                console.error('Ошибка при обновлении:', e); // Добавьте логирование для отладки
-                res.status(500).send(e);
-        }
-});
-*/
 app.delete('/api/exercises/:userId/:exerciseId', async (req, res) => {
         const { userId, exerciseId } = req.params;
         try {
